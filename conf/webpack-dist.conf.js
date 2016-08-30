@@ -61,7 +61,7 @@ module.exports = {
     filename: '[name]-[hash].js'
   },
   entry: {
-    app: `./${conf.path.src('main')}`
-    // vendor: Object.keys(pkg.dependencies)
+    app: `./${conf.path.src('main')}`,
+    vendor: Object.keys(pkg.dependencies)
   }
 };

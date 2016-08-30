@@ -1,6 +1,7 @@
 import gulp from 'gulp';
 import HubRegistry from 'gulp-hub';
 import browserSync from 'browser-sync';
+import eslint from 'gulp-eslint';
 
 import { path as configPath } from './conf/gulp.conf';
 
@@ -17,6 +18,12 @@ gulp.task('serve', gulp.series('clean', 'webpack:watch', 'watch', 'browsersync')
 gulp.task('serve:dist', gulp.series('default', 'browsersync:dist'));
 gulp.task('default', gulp.series('clean', 'build'));
 gulp.task('watch', watch);
+gulp.task('lint', () => {
+  return gulp.src([configPath.src("**/*.js")])
+    .pipe(eslint())
+    .pipe(eslint.format())
+    .pipe(eslint.failAfterError());
+});
 
 function reloadBrowserSync(cb) {
   browserSync.reload();
