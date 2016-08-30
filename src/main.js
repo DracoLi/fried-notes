@@ -1,6 +1,6 @@
-import DracoRocks from './app/hello';
+import Document from './app/document';
 import './main.scss';
 
-const oneRocks = new DracoRocks();
-oneRocks.shout();
-oneRocks.shout();
+const blankDocument = new Document();
+const container = document.getElementById('documentContainer');
+container.insertAdjacentHTML('afterbegin', blankDocument.getHtml());

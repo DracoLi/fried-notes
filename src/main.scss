@@ -1,3 +1,7 @@
 body {
-  background-color: lightgrey;
+  background-color: white;
+}
+
+#document:read-write:focus {
+  outline: none;
 }
