@@ -1,23 +1,41 @@
-import cheerio from 'cheerio'
+import React from 'react'
+import { Editor, Raw } from '../slate/index'
+import BasicRichText from './plugins/basic-mod-shortcuts'
 
-export default class Document {
+const initialState = Raw.deserialize({
+  nodes: [
+    {
+      kind: 'block',
+      type: 'paragraph',
+      nodes: [
+        {
+          kind: 'text',
+          text: 'A line of text in a paragraph.'
+        }
+      ]
+    }
+  ]
+}, { terse: true })
 
-  constructor(options) {
-    this.$ = cheerio.load('<div id="document"></div>');
-    window.$ = this.$;
-    this.$('#document').attr('contenteditable', true);
-    this.appendDefaultNewLine();
+export default class Document extends React.Component {
+
+  state = {
+    state: initialState
   }
 
-  appendDefaultNewLine() {
-    this.$('#document').append('<p class="paragraph"><br/></p>');
+
+
+  onChange(state) {
+    this.setState({ state })
   }
 
-  getText() {
-    return this.$.text();
-  }
-
-  getHtml() {
-    return this.$.html();
+  render() {
+    return (
+      <Editor
+        state={this.state.state}
+        plugins={[BasicRichText]}
+        onChange={state => this.onChange(state) }
+      />
+    )
   }
 }

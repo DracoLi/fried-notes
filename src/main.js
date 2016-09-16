@@ -1,6 +1,9 @@
 import Document from './app/document';
+import React from 'react'
+import ReactDOM from 'react-dom'
 import './main.scss';
 
-const blankDocument = new Document();
-const container = document.getElementById('documentContainer');
-container.insertAdjacentHTML('afterbegin', blankDocument.getHtml());
+ReactDOM.render(
+  <Document />,
+  document.getElementById('documentContainer')
+);
