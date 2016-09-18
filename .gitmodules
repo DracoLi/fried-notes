@@ -1,0 +1,3 @@
+[submodule "src/slate"]
+	path = src/slate
+	url = git@github.com:DracoLi/slate.git
