@@ -42,7 +42,7 @@ module.exports = {
   ],
   postcss: () => [autoprefixer],
   debug: true,
-  devtool: 'cheap-module-eval-source-map',
+  devtool: 'source-map',
   output: {
     path: path.join(process.cwd(), conf.paths.tmp),
     filename: 'main.js',

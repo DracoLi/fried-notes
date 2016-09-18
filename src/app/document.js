@@ -1,6 +1,7 @@
 import React from 'react'
 import { Editor, Raw } from '../slate/index'
-import BasicRichText from './plugins/basic-mod-shortcuts'
+import BasicKeyboardShortcuts from './plugins/basic-keyboard-shortcuts'
+import AutoMarkdownStyling from './plugins/auto-markdown-styling'
 
 const initialState = Raw.deserialize({
   nodes: [
@@ -23,8 +24,6 @@ export default class Document extends React.Component {
     state: initialState
   }
 
-
-
   onChange(state) {
     this.setState({ state })
   }
@@ -33,7 +32,7 @@ export default class Document extends React.Component {
     return (
       <Editor
         state={this.state.state}
-        plugins={[BasicRichText]}
+        plugins={[BasicKeyboardShortcuts, AutoMarkdownStyling]}
         onChange={state => this.onChange(state) }
       />
     )

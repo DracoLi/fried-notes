@@ -1,7 +1,7 @@
 /**
  * Add support for basic shortcuts with the modifier key.
  *
- * Supports bold, italic, underline
+ * Supports bold, italic, strikethrough and underline.
  */
 export default {
   schema: {
@@ -20,6 +20,9 @@ export default {
       },
       underlined: {
         textDecoration: 'underline'
+      },
+      strikethrough: {
+        textDecoration: 'line-through'
       }
     }
   },
@@ -37,6 +40,11 @@ export default {
         break;
       case 'u':
         mark = 'underlined';
+        break;
+      case 's':
+        if (data.isModAlt) {
+          mark = 'strikethrough';
+        }
         break;
       default:
         return;
