@@ -24,6 +24,11 @@ export default class Document extends React.Component {
     state: initialState
   }
 
+  constructor(props) {
+    super(props);
+    window.main = this;
+  }
+
   onChange(state) {
     this.setState({ state })
   }
