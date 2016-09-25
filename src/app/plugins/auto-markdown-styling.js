@@ -85,8 +85,10 @@ export default {
     if (data.key === 'enter' && leftChars === '---') {
       return this.createDivider(state);
     }
-
-    if (data.key === 'backspace') {
+    else if (data.key === 'enter') {
+      return this.onEnter(e, state);
+    }
+    else if (data.key === 'backspace') {
       return this.onKeyDownBackspace(e, data, state);
     }else if (data.key === 'delete') {
       return this.onKeyDownDelete(e, data, state);
@@ -106,7 +108,6 @@ export default {
   onBeforeInput(e, data, state, editor) {
     const stateAfterCore = slateCore.onBeforeInput(e, data, state, editor);
     return this.stateAfterAutoTransformation(stateAfterCore);
-
   },
 
   onPaste(e, data, state) {
@@ -114,84 +115,106 @@ export default {
     return this.stateAfterAutoTransformation(stateAfterPaste);
   },
 
-  /**
-   * This method handles auto block transformations using the passed in state.
-   */
-  stateAfterAutoTransformation(state) {
+  onEnter(e, state) {
     const { startBlock } = state;
-    const currentBlockText = startBlock.text;
-    const currentBlockType = startBlock.type;
-    let currentBlockTextMarker = null;
-    let isCurrentBlockTransformed = false;
-    let targetBlockType = null;
-    let targetBlockTextMarker = null;
-    let targetBlockMatchText = null;
+    const hasTransformer = this.startBlockTransformers.find(oneData => oneData.blockType === startBlock.type ) !== undefined;
+    if (!hasTransformer) return;
+    e.preventDefault();
+    let newState = state
+      .transform()
+      .splitBlock()
+      .apply()
+    window.newState = newState;
+    newState = this.stateAfterAutoTransformation(newState, newState.document.getPreviousBlock(newState.startBlock));
+    newState = this.stateAfterAutoTransformation(newState, newState.startBlock);
+    return newState;
+  },
+
+  stateAfterAutoTransformation(state, block=null) {
+    if (block === null) block = state.startBlock;
+    const transformData = this.transformationDataForBlock(block);
+    const currentBlockType = block.type;
+    const currentTransformData = this.startBlockTransformers.find((oneData) => {
+      return oneData.blockType === currentBlockType;
+    });
+
+    if (currentTransformData !== undefined && transformData === null) {
+      const newTranform = state.transform();
+      this.removeAutoHeadingTransformation(newTranform, block, state.selection, currentTransformData.textMarker);
+      return newTranform.apply({merge: true});
+    }
+
+    else if (transformData !== null) {
+      const newTranform = state.transform();
+      this.applyAutoHeadingTransformation(newTranform, block, state.selection, state.document, transformData);
+      return newTranform.apply({merge: true});
+    }
+  },
+
+  removeAutoHeadingTransformation(transform, block, selection, headingMarker) {
+    return transform
+      .collapseToStartOf(block)
+      .extendToEndOf(block)
+      .removeMark(headingMarker)
+      .setBlock('paragraph')
+      .moveTo(selection)
+  },
+
+  applyAutoHeadingTransformation(transform, block, selection, document, transformData) {
+    const { matchText, textMarker, blockType } = transformData;
+    const markerSelection = selection
+      .collapseToStartOf(block)
+      .extendForward(matchText.length);
+    const startMarks = document.getMarksAtRange(markerSelection);
+    const hasHeadingMarks = startMarks.filter(oneMark => oneMark.type === textMarker);
+    const shouldInverseMarks = !hasHeadingMarks;
+    const contentSelection = markerSelection
+      .collapseToFocus()
+      .extendToEndOf(block);
+    transform
+      .moveTo(markerSelection)
+      .addMark(textMarker, shouldInverseMarks)
+      .moveTo(contentSelection)
+      .removeMark(textMarker, shouldInverseMarks)
+      .moveTo(selection)
+      .setBlock(blockType);
+    if (selection.isCollapsed &&
+        selection.startOffset >= matchText.length + 1) {
+      transform.removeMark(textMarker);
+    }
+    return transform;
+  },
+
+  shouldBlockBeTransformed(targetBlock) {
+    return this.transformationDataForBlock(targetBlock) !== null;
+  },
+
+  transformationDataForBlock(targetBlock) {
+    const blockText = targetBlock.text;
+    const blockType = targetBlock.type;
+    let blockTextMarker = null;
+    let transformationData = null;
 
     this.startBlockTransformers.forEach((matchData) => {
-      if (targetBlockType !== null) return;
+      // Skip if transformation data found
+      if (transformationData !== null) return;
 
+      // Handle text and texts attributes
       let matchTexts = matchData.texts;
       if (matchTexts === undefined) matchTexts = [matchData.text];
 
+      // Find matching text in block
       matchTexts.forEach((matchText) => {
-        // Check if the current block is already transformed
-        if (currentBlockType === matchData.blockType) {
-          isCurrentBlockTransformed = true;
-          currentBlockTextMarker = matchData.textMarker;
-        }
-
         // Check if current block text starts with the match text plus a space.
         // If true, then we set target block type to the matched block type.
-        if (currentBlockText.indexOf(`${matchText} `) === 0) {
-          targetBlockType = matchData.blockType;
-          targetBlockTextMarker = matchData.textMarker;
-          targetBlockMatchText = matchText;
+        if (blockText.indexOf(`${matchText} `) === 0) {
+          transformationData = matchData;
+          transformationData.matchText = matchText;
         }
       });
-
     });
 
-    // If current block type is null but the block is already transformed
-    // then we need to remove the transformation.
-    if (targetBlockType === null && isCurrentBlockTransformed) {
-      log.info(`Removing an existing transformation with type: ${currentBlockType}`);
-      const startingSelection = state.selection;
-      return state
-        .transform()
-        .collapseToStartOf(startBlock)
-        .extendToEndOf(startBlock)
-        .removeMark(currentBlockTextMarker)
-        .setBlock('paragraph')
-        .moveTo(startingSelection)
-        .apply({merge: true});
-
-    // Else if we have a target block type that is different than
-    // current block type then we transform the block to it.
-    }else if (targetBlockType !== null && currentBlockType !== targetBlockType) {
-      log.info(`Creating a new transformation with type: ${targetBlockType}, marker: ${targetBlockTextMarker}`);
-      const startingSelection = state.selection;
-      window.startingSelection = startingSelection;
-      const markerSelection = startingSelection
-        .collapseToStartOf(startBlock)
-        .extendForward(targetBlockMatchText.length)
-      window.markerSelection = markerSelection;
-      const blockContentSelection = markerSelection
-        .collapseToFocus()
-        .extendToEndOf(startBlock)
-
-      const newState = state
-        .transform()
-        .moveTo(markerSelection)
-        .addMark(targetBlockTextMarker)
-        .moveTo(blockContentSelection)
-        .removeMark(targetBlockTextMarker)
-        .moveTo(startingSelection)
-        .setBlock(targetBlockType);
-      if (startingSelection.isCollapsed) {
-        newState.removeMark(targetBlockTextMarker);
-      }
-      return newState.apply({merge: true});
-    }
+    return transformationData;
   },
 
   createDivider(state) {
