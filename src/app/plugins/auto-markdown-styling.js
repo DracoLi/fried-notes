@@ -173,9 +173,9 @@ export default {
       .extendToEndOf(block);
     transform
       .moveTo(markerSelection)
-      .addMark(textMarker, shouldInverseMarks)
+      .addMark(textMarker)
       .moveTo(contentSelection)
-      .removeMark(textMarker, shouldInverseMarks)
+      .removeMark(textMarker)
       .moveTo(selection)
       .setBlock(blockType);
     if (selection.isCollapsed &&
