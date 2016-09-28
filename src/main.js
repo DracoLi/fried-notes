@@ -1,7 +1,7 @@
-import Document from './app/document';
-import React from 'react'
-import ReactDOM from 'react-dom'
+import React from 'react';
+import ReactDOM from 'react-dom';
 import loglevel from 'loglevel';
+import Document from './app/document';
 import './main.scss';
 
 loglevel.setLevel('trace');

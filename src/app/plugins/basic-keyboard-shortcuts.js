@@ -7,30 +7,29 @@ export default {
   schema: {
     marks: {
       bold: {
-        fontWeight: 'bold'
+        fontWeight: 'bold',
       },
       code: {
         fontFamily: 'monospace',
         backgroundColor: '#eee',
         padding: '3px',
-        borderRadius: '4px'
+        borderRadius: '4px',
       },
       italic: {
-        fontStyle: 'italic'
+        fontStyle: 'italic',
       },
       underlined: {
-        textDecoration: 'underline'
+        textDecoration: 'underline',
       },
       strikethrough: {
-        textDecoration: 'line-through'
-      }
-    }
+        textDecoration: 'line-through',
+      },
+    },
   },
 
   onKeyDown(e, data, state) {
     if (!data.isMod) return;
     let mark;
-
     switch (data.key) {
       case 'b':
         mark = 'bold';
@@ -50,12 +49,11 @@ export default {
         return;
     }
 
-    state = state
+    const newState = state
       .transform()
       .toggleMark(mark)
       .apply();
-
     e.preventDefault();
-    return state;
-  }
-}
+    return newState;
+  },
+};

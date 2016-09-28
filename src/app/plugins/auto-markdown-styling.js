@@ -1,10 +1,10 @@
 import React from 'react';
 import loglevel from 'loglevel';
-import CorePlugin from '~/slate/plugins/core'
+import corePlugin from '~/slate/plugins/core';
 
-const slateCore = CorePlugin();
-
+const slateCore = corePlugin();
 const log = loglevel.getLogger('auto-markdown-styling');
+log.info('auto-markdown-stlying applied');
 
 /**
  * Add support for auto styling markdown related text.
@@ -17,20 +17,21 @@ export default {
    * This array of data is used for transforming a block to a given
    * block type depending on its starting text.
    *
-   * We do this by checking for startBlock's text in `OnDocumentChange`.
-   * If the starting text matches any of the text attributes in this list
-   * followed by a space then we automatically transforms that block to the
+   * We do this by checking for `startBlock`'s text whenever the user makes
+   * a change to the text in the current block.
+   * If the block's starting text matches any of the `text` attributes in this
+   * list followed by a space then we automatically transform that block to the
    * `blockType` for that text. The `textMarker` is then applied to the matched
-   * text plus the extra space.
+   * text minus the extra space.
    * Any text data after the matched text will not have the marker applied
-   * but will belong to the block type applied.
-   * If a block has a type in this list but the starting text no longer
+   * but will belong to the `blockType` applied.
+   * If a block has a type in this list but its starting text no longer
    * matches then we will transform that block's type to `paragraph` and
-   * remove the `textMarker` for that `blockType`.
+   * remove the `textMarker` for that block.
    *
    * Note: You can use `texts` instead of `text` in the data list.
-   * `texts` work by matching any text in the list to the `blockType` as
-   * opposed to just a single text.
+   * `texts` works by matching any text in the list to the `blockType` as
+   * opposed to just a single text per `blockType`.
    */
   startBlockTransformers: [
     { blockType: 'heading-one', textMarker: 'heading-marker', text: '#' },
@@ -49,7 +50,7 @@ export default {
       'heading-four': props => <h4 {...props.attributes}>{props.children}</h4>,
       'heading-five': props => <h5 {...props.attributes}>{props.children}</h5>,
       'bullet-list': props => <li {...props.attributes}>{props.children}</li>,
-      'divider': (props) => {
+      divider: (props) => {
         return (
           <div
             className="document-divider"
@@ -61,36 +62,27 @@ export default {
                 suppressContentEditableWarning>&nbsp;</span>
           </div>
         );
-      }
+      },
     },
     marks: {
       'heading-marker': {
-        'fontStyle': 'italic',
-        'color': '#eee'
+        fontStyle: 'italic',
+        color: '#eee',
       },
       'bullet-marker': {
-        'color': '#eee'
+        color: '#eee',
       },
-      'shit': {
-
-      }
-    }
+    },
   },
 
   onKeyDown(e, data, state) {
     // Dividers can only be created by pressing the enter key with
     // the text before your selection fit the divider text.
-    const { startBlock, startOffset } = state;
-    const leftChars = startBlock.text.slice(0, startOffset);
-    if (data.key === 'enter' && leftChars === '---') {
-      return this.createDivider(state);
-    }
-    else if (data.key === 'enter') {
+    if (data.key === 'enter') {
       return this.onEnter(e, state);
-    }
-    else if (data.key === 'backspace') {
+    } else if (data.key === 'backspace') {
       return this.onKeyDownBackspace(e, data, state);
-    }else if (data.key === 'delete') {
+    } else if (data.key === 'delete') {
       return this.onKeyDownDelete(e, data, state);
     }
   },
@@ -116,38 +108,57 @@ export default {
   },
 
   onEnter(e, state) {
-    const { startBlock } = state;
-    const hasTransformer = this.startBlockTransformers.find(oneData => oneData.blockType === startBlock.type ) !== undefined;
-    if (!hasTransformer) return;
-    e.preventDefault();
-    let newState = state
-      .transform()
-      .splitBlock()
-      .apply()
-    window.newState = newState;
-    newState = this.stateAfterAutoTransformation(newState, newState.document.getPreviousBlock(newState.startBlock));
-    newState = this.stateAfterAutoTransformation(newState, newState.startBlock);
-    return newState;
+    const { startBlock, startOffset } = state;
+
+    // Handle creating dividers
+    const leftChars = startBlock.text.slice(0, startOffset);
+    if (leftChars === '---') {
+      e.preventDefault();
+      return this.createDivider(state);
+    }
+
+    // Handle splitting a transformed block
+    const hasTransformedBlock = this.startBlockTransformers
+      .some(oneData => oneData.blockType === startBlock.type);
+    if (hasTransformedBlock) {
+      e.preventDefault();
+
+      // Split block at selection
+      let newState = state
+        .transform()
+        .splitBlock()
+        .apply();
+
+      // Transform last block
+      const prevBlock = newState.document.getPreviousBlock(newState.startBlock);
+      newState = this.stateAfterAutoTransformation(newState, prevBlock);
+
+      // Transform new block
+      return this.stateAfterAutoTransformation(newState, newState.startBlock);
+    }
   },
 
-  stateAfterAutoTransformation(state, block=null) {
-    if (block === null) block = state.startBlock;
-    const transformData = this.transformationDataForBlock(block);
-    const currentBlockType = block.type;
+  stateAfterAutoTransformation(state, block = null) {
+    let blockToUse = block;
+    if (blockToUse === null) blockToUse = state.startBlock;
+    const transformData = this.transformationDataForBlock(blockToUse);
+    const currentBlockType = blockToUse.type;
     const currentTransformData = this.startBlockTransformers.find((oneData) => {
       return oneData.blockType === currentBlockType;
     });
 
     if (currentTransformData !== undefined && transformData === null) {
       const newTranform = state.transform();
-      this.removeAutoHeadingTransformation(newTranform, block, state.selection, currentTransformData.textMarker);
-      return newTranform.apply({merge: true});
-    }
-
-    else if (transformData !== null) {
+      this.removeAutoHeadingTransformation(newTranform,
+                                           blockToUse, state.selection,
+                                           currentTransformData.textMarker);
+      return newTranform.apply({ merge: true });
+    } else if (transformData !== null) {
       const newTranform = state.transform();
-      this.applyAutoHeadingTransformation(newTranform, block, state.selection, state.document, transformData);
-      return newTranform.apply({merge: true});
+      this.applyAutoHeadingTransformation(newTranform, blockToUse,
+                                          state.selection, state.document,
+                                          transformData);
+      return newTranform.apply({ merge: true });
     }
   },
 
@@ -157,7 +168,7 @@ export default {
       .extendToEndOf(block)
       .removeMark(headingMarker)
       .setBlock('paragraph')
-      .moveTo(selection)
+      .moveTo(selection);
   },
 
   applyAutoHeadingTransformation(transform, block, selection, document, transformData) {
@@ -165,9 +176,6 @@ export default {
     const markerSelection = selection
       .collapseToStartOf(block)
       .extendForward(matchText.length);
-    const startMarks = document.getMarksAtRange(markerSelection);
-    const hasHeadingMarks = startMarks.filter(oneMark => oneMark.type === textMarker);
-    const shouldInverseMarks = !hasHeadingMarks;
     const contentSelection = markerSelection
       .collapseToFocus()
       .extendToEndOf(block);
@@ -191,8 +199,6 @@ export default {
 
   transformationDataForBlock(targetBlock) {
     const blockText = targetBlock.text;
-    const blockType = targetBlock.type;
-    let blockTextMarker = null;
     let transformationData = null;
 
     this.startBlockTransformers.forEach((matchData) => {
@@ -229,4 +235,4 @@ export default {
       .setBlock('paragraph')
       .apply();
   },
-}
+};

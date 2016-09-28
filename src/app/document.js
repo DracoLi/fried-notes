@@ -1,7 +1,7 @@
-import React from 'react'
-import { Editor, Raw } from '../slate/index'
-import BasicKeyboardShortcuts from './plugins/basic-keyboard-shortcuts'
-import AutoMarkdownStyling from './plugins/auto-markdown-styling'
+import React from 'react';
+import BasicKeyboardShortcuts from './plugins/basic-keyboard-shortcuts';
+import AutoMarkdownStyling from './plugins/auto-markdown-styling';
+import { Editor, Raw } from '../slate/index';
 
 const initialState = Raw.deserialize({
   nodes: [
@@ -11,26 +11,26 @@ const initialState = Raw.deserialize({
       nodes: [
         {
           kind: 'text',
-          text: 'A line of text in a paragraph.'
-        }
-      ]
-    }
-  ]
-}, { terse: true })
+          text: 'A line of text in a paragraph.',
+        },
+      ],
+    },
+  ],
+}, { terse: true });
 
 export default class Document extends React.Component {
-
-  state = {
-    state: initialState
-  }
 
   constructor(props) {
     super(props);
     window.main = this;
   }
 
+  state = {
+    state: initialState,
+  }
+
   onChange(state) {
-    this.setState({ state })
+    this.setState({ state });
   }
 
   render() {
@@ -38,8 +38,8 @@ export default class Document extends React.Component {
       <Editor
         state={this.state.state}
         plugins={[BasicKeyboardShortcuts, AutoMarkdownStyling]}
-        onChange={state => this.onChange(state) }
+        onChange={state => this.onChange(state)}
       />
-    )
+    );
   }
 }
