@@ -76,8 +76,6 @@ export default {
   },
 
   onKeyDown(e, data, state) {
-    // Dividers can only be created by pressing the enter key with
-    // the text before your selection fit the divider text.
     if (data.key === 'enter') {
       return this.onEnter(e, state);
     } else if (data.key === 'backspace') {
@@ -130,48 +128,68 @@ export default {
         .apply();
 
       // Transform last block
-      const prevBlock = newState.document.getPreviousBlock(newState.startBlock);
-      newState = this.stateAfterAutoTransformation(newState, prevBlock);
+      const newBlock = newState.startBlock;
+      const prevBlock = newState.document.getPreviousBlock(newBlock);
+      newState = this.stateAfterAutoTransformation(newState, prevBlock) || newState;
 
       // Transform new block
-      return this.stateAfterAutoTransformation(newState, newState.startBlock);
+      return this.stateAfterAutoTransformation(newState, newBlock) || newState;
     }
   },
 
+  /**
+   * Check for auto transformations on the passed in block or the `startBlock`
+   * of the currently selection.
+   *
+   * If the block should be transformed, we apply the transformation to the
+   * block and return the new tranform.
+   * If the block should not be transformed but is already transformed, then
+   * we remove the transformation and return the new transform.
+   */
   stateAfterAutoTransformation(state, block = null) {
+    // Determine the block to use
     let blockToUse = block;
     if (blockToUse === null) blockToUse = state.startBlock;
-    const transformData = this.transformationDataForBlock(blockToUse);
-    const currentBlockType = blockToUse.type;
-    const currentTransformData = this.startBlockTransformers.find((oneData) => {
-      return oneData.blockType === currentBlockType;
-    });
 
-    if (currentTransformData !== undefined && transformData === null) {
+    // Find current block transformation and the transformation needed
+    const targetData = this.transformationDataForBlock(blockToUse);
+    const currentData = this.startBlockTransformers
+      .find(oneData => oneData.blockType === blockToUse.type);
+
+    // Remove transformation if no target transform data and block
+    // has transform data.
+    if (currentData && targetData === null) {
       const newTranform = state.transform();
       this.removeAutoHeadingTransformation(newTranform,
-                                           blockToUse, state.selection,
-                                           currentTransformData.textMarker);
+                                           state,
+                                           blockToUse,
+                                           currentData);
       return newTranform.apply({ merge: true });
-    } else if (transformData !== null) {
+
+    // Apply transformation if have target transformation and it's not the
+    // same as the current transformation data
+    } else if (targetData !== null) {
+      if (currentData && targetData.blockType === currentData.blockType) return;
       const newTranform = state.transform();
-      this.applyAutoHeadingTransformation(newTranform, blockToUse,
-                                          state.selection, state.document,
-                                          transformData);
+      this.applyAutoHeadingTransformation(newTranform,
+                                          state,
+                                          blockToUse,
+                                          targetData);
       return newTranform.apply({ merge: true });
     }
   },
 
-  removeAutoHeadingTransformation(transform, block, selection, headingMarker) {
+  removeAutoHeadingTransformation(transform, state, block, transformData) {
     return transform
       .collapseToStartOf(block)
       .extendToEndOf(block)
-      .removeMark(headingMarker)
+      .removeMark(transformData.textMarker)
       .setBlock('paragraph')
-      .moveTo(selection);
+      .moveTo(state.selection);
   },
 
-  applyAutoHeadingTransformation(transform, block, selection, document, transformData) {
+  applyAutoHeadingTransformation(transform, state, block, transformData) {
+    const { selection } = state;
     const { matchText, textMarker, blockType } = transformData;
     const markerSelection = selection
       .collapseToStartOf(block)
@@ -186,15 +204,11 @@ export default {
       .removeMark(textMarker)
       .moveTo(selection)
       .setBlock(blockType);
-    if (selection.isCollapsed &&
-        selection.startOffset >= matchText.length + 1) {
+    if (selection.isCollapsed
+        && selection.startOffset >= matchText.length + 1) {
       transform.removeMark(textMarker);
     }
     return transform;
-  },
-
-  shouldBlockBeTransformed(targetBlock) {
-    return this.transformationDataForBlock(targetBlock) !== null;
   },
 
   transformationDataForBlock(targetBlock) {
@@ -224,11 +238,10 @@ export default {
   },
 
   createDivider(state) {
-    const { startBlock } = state;
     return state
       .transform()
       .collapseToStart()
-      .extendToStartOf(startBlock)
+      .extendToStartOf(state.startBlock)
       .delete()
       .setBlock('divider')
       .splitBlock()
