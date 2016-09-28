@@ -13,10 +13,9 @@
     "consistent-return": 0,
     "arrow-body-style": 0,
     "react/jsx-indent": 0,
-    // For babel-root-import
-    "import/no-unresolved": [2, { "ignore": ["^[~]"] }]
-  },
-  "plugins": [
-    "import"
-  ]
+
+    // To work with babel-root-import
+    "import/no-unresolved": [2, { "ignore": ["^[~]"] }],
+    "import/extensions": [2, "never", {"css": "always", "scss": "always"}]
+  }
 }
