@@ -23,6 +23,7 @@ export default class Document extends React.Component {
   constructor(props) {
     super(props);
     window.main = this;
+    this.onChange = this.onChange.bind(this);
   }
 
   state = {
@@ -38,7 +39,7 @@ export default class Document extends React.Component {
       <Editor
         state={this.state.state}
         plugins={[BasicKeyboardShortcuts, AutoMarkdownStyling]}
-        onChange={state => this.onChange(state)}
+        onChange={this.onChange}
       />
     );
   }

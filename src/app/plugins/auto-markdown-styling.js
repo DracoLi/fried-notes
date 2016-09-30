@@ -115,25 +115,50 @@ export default {
       return this.createDivider(state);
     }
 
-    // Handle splitting a transformed block
-    const hasTransformedBlock = this.startBlockTransformers
-      .some(oneData => oneData.blockType === startBlock.type);
-    if (hasTransformedBlock) {
+    // Handle state changes for transformation splitting
+    return this.handleBlockSplitting(e, state);
+  },
+
+  /**
+   * When splitting a block we check if the previous block or the next
+   * block need transformation adjustments. If true for any one of the block,
+   * then return a new state with the correct transformation applied.
+   */
+  handleBlockSplitting(e, state) {
+    // Handle splitting a block that neeeds transformations
+    let needTransformation = false;
+    let newState = state
+      .transform()
+      .splitBlock()
+      .setBlock('paragraph')
+      .apply();
+
+    // Transform last block if needed
+    const newBlock = newState.startBlock;
+    const prevBlock = newState.document.getPreviousBlock(newBlock);
+    const newPrevState = this.stateAfterAutoTransformation(newState, prevBlock);
+    if (newPrevState) {
+      needTransformation = true;
+      newState = newPrevState;
+    } else {
+      // If prev block is transformed, then we need to make sure the new
+      // block is set to paragraph by default if it is not transformed.
+      const isPrevBlockTransformed = this.startBlockTransformers
+        .some(oneData => oneData.blockType === prevBlock.type);
+      if (isPrevBlockTransformed) needTransformation = true;
+    }
+
+    // Transform new block if needed
+    const newNextState = this.stateAfterAutoTransformation(newState, newBlock);
+    if (newNextState) {
+      needTransformation = true;
+      newState = newNextState;
+    }
+
+    // Return new state if prev or next block should be transformed
+    if (needTransformation) {
       e.preventDefault();
-
-      // Split block at selection
-      let newState = state
-        .transform()
-        .splitBlock()
-        .apply();
-
-      // Transform last block
-      const newBlock = newState.startBlock;
-      const prevBlock = newState.document.getPreviousBlock(newBlock);
-      newState = this.stateAfterAutoTransformation(newState, prevBlock) || newState;
-
-      // Transform new block
-      return this.stateAfterAutoTransformation(newState, newBlock) || newState;
+      return newState;
     }
   },
 
@@ -176,7 +201,33 @@ export default {
                                           blockToUse,
                                           targetData);
       return newTranform.apply({ merge: true });
+
+    // Make sure no text markers exists if no transformation is applied.
+    // This could be from a delete command that joins a transformed block with
+    // a normal block.
+    } else if (this.blockHasTextMarker(blockToUse, state)) {
+      const newTranform = state.transform();
+      this.removeHeadingMarkerFromBlock(newTranform, state, blockToUse)
+      return newTranform.apply({ merge: true });
     }
+  },
+
+  blockHasTextMarker(block, state) {
+    const { document, selection } = state;
+    const blockSelection = selection
+      .collapseToStartOf(block)
+      .extendToEndOf(block);
+    return document
+      .getMarksAtRange(blockSelection)
+      .some((mark) => mark.type === 'heading-marker');
+  },
+
+  removeHeadingMarkerFromBlock(transform, state, block) {
+    const { document, selection } = state;
+    const blockSelection = selection
+      .collapseToStartOf(block)
+      .extendToEndOf(block);
+    return transform.removeMarkAtRange(blockSelection, 'heading-marker');
   },
 
   removeAutoHeadingTransformation(transform, state, block, transformData) {
