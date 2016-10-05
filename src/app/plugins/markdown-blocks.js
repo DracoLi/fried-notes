@@ -3,13 +3,13 @@ import loglevel from 'loglevel';
 import corePlugin from '~/slate/plugins/core';
 
 const slateCore = corePlugin();
-const log = loglevel.getLogger('auto-markdown-styling');
-log.info('auto-markdown-stlying applied');
+const log = loglevel.getLogger('markdown-blocks');
+log.info('markdown-blocks plugin applied');
 
 /**
- * Add support for auto styling markdown related text.
+ * Add support for handling markdown blocks.
  *
- * Supports headings, lists, codeblocks, and dividers.
+ * This includes headings, lists, codeblocks, and dividers.
  */
 export default {
 
@@ -207,7 +207,7 @@ export default {
     // a normal block.
     } else if (this.blockHasTextMarker(blockToUse, state)) {
       const newTranform = state.transform();
-      this.removeHeadingMarkerFromBlock(newTranform, state, blockToUse)
+      this.removeHeadingMarkerFromBlock(newTranform, state, blockToUse);
       return newTranform.apply({ merge: true });
     }
   },
@@ -219,11 +219,11 @@ export default {
       .extendToEndOf(block);
     return document
       .getMarksAtRange(blockSelection)
-      .some((mark) => mark.type === 'heading-marker');
+      .some(mark => mark.type === 'heading-marker');
   },
 
   removeHeadingMarkerFromBlock(transform, state, block) {
-    const { document, selection } = state;
+    const { selection } = state;
     const blockSelection = selection
       .collapseToStartOf(block)
       .extendToEndOf(block);

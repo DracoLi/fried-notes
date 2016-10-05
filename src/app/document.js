@@ -1,6 +1,6 @@
 import React from 'react';
-import BasicKeyboardShortcuts from './plugins/basic-keyboard-shortcuts';
-import AutoMarkdownStyling from './plugins/auto-markdown-styling';
+import MarkdownMarks from './plugins/markdown-marks';
+import MarkdownBlocks from './plugins/markdown-blocks';
 import { Editor, Raw } from '../slate/index';
 
 const initialState = Raw.deserialize({
@@ -38,7 +38,7 @@ export default class Document extends React.Component {
     return (
       <Editor
         state={this.state.state}
-        plugins={[BasicKeyboardShortcuts, AutoMarkdownStyling]}
+        plugins={[MarkdownMarks, MarkdownBlocks]}
         onChange={this.onChange}
       />
     );
