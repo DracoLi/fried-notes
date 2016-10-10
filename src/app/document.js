@@ -1,4 +1,5 @@
 import React from 'react';
+import BaseBehaviour from './plugins/base-behaviour';
 import MarkdownMarks from './plugins/markdown-marks';
 import MarkdownBlocks from './plugins/markdown-blocks';
 import { Editor, Raw } from '../slate/index';
@@ -38,7 +39,7 @@ export default class Document extends React.Component {
     return (
       <Editor
         state={this.state.state}
-        plugins={[MarkdownMarks, MarkdownBlocks]}
+        plugins={[MarkdownMarks, MarkdownBlocks, BaseBehaviour]}
         onChange={this.onChange}
       />
     );

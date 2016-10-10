@@ -13,6 +13,7 @@
     "consistent-return": 0,
     "arrow-body-style": 0,
     "react/jsx-indent": 0,
+    "no-bitwise": ["error", { "int32Hint": true }],
 
     // To work with babel-root-import
     "import/no-unresolved": [2, { "ignore": ["^[~]"] }],

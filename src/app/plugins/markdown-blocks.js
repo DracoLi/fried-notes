@@ -33,13 +33,20 @@ export default {
    * `texts` works by matching any text in the list to the `blockType` as
    * opposed to just a single text per `blockType`.
    */
-  startBlockTransformers: [
+  blockTransformData: [
     { blockType: 'heading-one', textMarker: 'heading-marker', text: '#' },
     { blockType: 'heading-two', textMarker: 'heading-marker', text: '##' },
     { blockType: 'heading-three', textMarker: 'heading-marker', text: '###' },
     { blockType: 'heading-four', textMarker: 'heading-marker', text: '####' },
     { blockType: 'heading-five', textMarker: 'heading-marker', text: '#####' },
-    { blockType: 'bullet-list', textMarker: 'bullet-marker', texts: ['+', '-', '*'] },
+    { blockType: 'list-item-bullet',
+      textMarker: 'list-marker',
+      texts: ['+', '-', '*'],
+      listBlockType: 'bullet-list' },
+    { blockType: 'list-item-number',
+      textMarker: 'list-marker',
+      text: '[numbered-list]',
+      listBlockType: 'numbered-list' },
   ],
 
   schema: {
@@ -49,7 +56,10 @@ export default {
       'heading-three': props => <h3 {...props.attributes}>{props.children}</h3>,
       'heading-four': props => <h4 {...props.attributes}>{props.children}</h4>,
       'heading-five': props => <h5 {...props.attributes}>{props.children}</h5>,
-      'bullet-list': props => <li {...props.attributes}>{props.children}</li>,
+      'bullet-list': props => <ul {...props.attributes}>{props.children}</ul>,
+      'numbered-list': props => <ol {...props.attributes}>{props.children}</ol>,
+      'list-item-bullet': props => <li {...props.attributes}>{props.children}</li>,
+      'list-item-number': props => <li {...props.attributes}>{props.children}</li>,
       divider: (props) => {
         return (
           <div
@@ -65,58 +75,196 @@ export default {
       },
     },
     marks: {
-      'heading-marker': {
-        fontStyle: 'italic',
-        color: '#eee',
-      },
-      'bullet-marker': {
-        color: '#eee',
-      },
+      'heading-marker': 'heading-marker',
+      'list-marker': 'list-marker',
     },
   },
 
+
+  /**
+   * Determines when we remove a list block transformation, whether the
+   * indentations for the list blocks should be removed as well.
+   */
+  shouldRemoveIndentationsOnListBlockRemoval: true,
+
   onKeyDown(e, data, state) {
     if (data.key === 'enter') {
-      return this.onEnter(e, state);
+      return this.onKeyDownEnter(e, data, state);
     } else if (data.key === 'backspace') {
       return this.onKeyDownBackspace(e, data, state);
     } else if (data.key === 'delete') {
       return this.onKeyDownDelete(e, data, state);
+    } else if (data.key === 'tab') {
+      return this.onKeyDownTab(e, data, state);
     }
   },
 
   onKeyDownBackspace(e, data, state) {
-    const stateAfterCore = slateCore.onKeyDownBackspace(e, data, state);
-    return this.stateAfterAutoTransformation(stateAfterCore);
+    // Handle deleting indentations in a number or bullet list.
+    // This will override the default backspace implementation so we do this first.
+    const newState = this.stateAfterListIndentationDeletion(e, data, state);
+    if (newState) return newState;
+
+    // Handle block transformation after core's backspace behaviour
+    const stateAfterCore = slateCore.onKeyDownBackspace(e, data, state) || state;
+    return this.stateAfterBlockTransformation(stateAfterCore);
   },
 
   onKeyDownDelete(e, data, state) {
-    const stateAfterCore = slateCore.onKeyDownDelete(e, data, state);
-    return this.stateAfterAutoTransformation(stateAfterCore);
+    const stateAfterCore = slateCore.onKeyDownDelete(e, data, state) || state;
+    return this.stateAfterBlockTransformation(stateAfterCore);
   },
 
-  onBeforeInput(e, data, state, editor) {
-    const stateAfterCore = slateCore.onBeforeInput(e, data, state, editor);
-    return this.stateAfterAutoTransformation(stateAfterCore);
+  onKeyDownTab(e, data, state) {
+    return this.stateAfterListItemAddIndentation(e, data, state);
   },
 
-  onPaste(e, data, state) {
-    const stateAfterPaste = slateCore.onPaste(e, data, state);
-    return this.stateAfterAutoTransformation(stateAfterPaste);
-  },
-
-  onEnter(e, state) {
+  onKeyDownEnter(e, data, state) {
     const { startBlock, startOffset } = state;
 
     // Handle creating dividers
-    const leftChars = startBlock.text.slice(0, startOffset);
+    const leftChars = startBlock.text.substring(0, startOffset);
     if (leftChars === '---') {
       e.preventDefault();
       return this.createDivider(state);
     }
 
-    // Handle state changes for transformation splitting
+    // Handle continuing list item
+    const newState = this.stateAfterContinueListItem(e, data, state);
+    if (newState) return newState;
+
+    // Handle block spitting logic for everything else
     return this.handleBlockSplitting(e, state);
+  },
+
+  onBeforeInput(e, data, state, editor) {
+    const stateAfterCore = slateCore.onBeforeInput(e, data, state, editor) || state;
+    return this.stateAfterBlockTransformation(stateAfterCore);
+  },
+
+  onPaste(e, data, state) {
+    const stateAfterPaste = slateCore.onPaste(e, data, state) || state;
+    return this.stateAfterBlockTransformation(stateAfterPaste);
+  },
+
+  /**
+   * Continue a list item with the same indentation.
+   * Continue can only work if the current selection is after
+   * the space in the bullet marker.
+   */
+  stateAfterContinueListItem(e, data, state) {
+    const { startBlock, selection } = state;
+    const blockText = startBlock.text;
+    if (startBlock.type.indexOf('list-item-') !== 0) return;
+
+    // If the selection is before the space in the marker then we return nothing
+    // so the default block splitting behaviour will be used.
+    const indexAfterSpace = blockText.indexOf(' ') + 1;
+    if (selection.startOffset < indexAfterSpace) return;
+
+    // If selection is collpased and at the start of list item,
+    // then remove block and add new pargraph block
+    if (selection.isCollapsed && selection.startOffset === indexAfterSpace) {
+      const currentData = this.blockTransformData
+        .find(oneData => oneData.blockType === startBlock.type);
+      e.preventDefault();
+      return state
+        .transform()
+        .moveToOffsets(0, indexAfterSpace)
+        .unwrapBlock(currentData.listBlockType)
+        .setBlock('paragraph')
+        .delete()
+        .splitBlock()
+        .apply();
+
+    // Else split block and create a new list item
+    } else {
+      const indentationCount = this.getIndentationCountForText(blockText);
+      const markerText = blockText.substring(indentationCount, indexAfterSpace - 1);
+      const isNumberList = markerText.slice(-1) === '.';
+      let newText = blockText.substring(0, indexAfterSpace);
+      if (isNumberList) {
+        const numberStr = markerText.slice(0, -1);
+        const nextNumber = Number.parseInt(numberStr, 10) + 1;
+        newText = blockText.substring(0, indentationCount) + nextNumber;
+        newText = `${newText}. `;
+      }
+      e.preventDefault();
+      return state
+        .transform()
+        .splitBlock()
+        .insertText(newText)
+        .apply();
+    }
+  },
+
+  /**
+   * Handle adding an indentation to a list item.
+   */
+  stateAfterListItemAddIndentation(e, data, state) {
+    const { startBlock, selection } = state;
+    if (startBlock.type.indexOf('list-item-') !== 0) return;
+    e.preventDefault();
+    const insertRange = selection.collapseToStartOf(startBlock);
+    const afterSelection = selection.moveForward();
+    return state
+      .transform()
+      .moveTo(insertRange)
+      .insertText('\t')
+      .moveTo(afterSelection)
+      .apply();
+  },
+
+  /**
+   * Handle removing indentations on backspace in a numbered or bullet list.
+   * This only works if the current selection is right after the list markers.
+   */
+  stateAfterListIndentationDeletion(e, data, state) {
+    const { startBlock, selection } = state;
+    const blockText = startBlock.text;
+
+    // Block must be of list-item
+    if (startBlock.type.indexOf('list-item-') !== 0) return;
+
+    // Selection must be collapsed
+    if (!selection.isCollapsed) return;
+
+    // Selection start offset must be right after bullet
+    const firstSpaceIndex = blockText.indexOf(' ');
+    if (selection.startOffset !== (firstSpaceIndex + 1)) return;
+
+    // If have indentation remove indentation
+    const indentation = this.getIndentationCountForText(blockText);
+    if (indentation > 0) {
+      const deleteRange = selection
+        .collapseToStartOf(startBlock)
+        .extendForward();
+      const finalSelection = selection
+        .moveBackward();
+      e.preventDefault();
+      return state
+        .transform()
+        .moveTo(deleteRange)
+        .delete()
+        .moveTo(finalSelection)
+        .apply();
+
+    // Else if no indentation and no content after selection,
+    // then remove the list item transform.
+    } else if (indentation == 0
+               && (startBlock.text.length === selection.startOffset)) {
+      const currentData = this.blockTransformData
+        .find(oneData => oneData.blockType === startBlock.type);
+      e.preventDefault();
+      return state
+        .transform()
+        .moveToRangeOf(startBlock)
+        .delete()
+        .unwrapBlock(currentData.listBlockType)
+        .setBlock('paragraph')
+        .delete()
+        .apply();
+    }
   },
 
   /**
@@ -125,38 +273,37 @@ export default {
    * then return a new state with the correct transformation applied.
    */
   handleBlockSplitting(e, state) {
-    // Handle splitting a block that neeeds transformations
-    let needTransformation = false;
+    let isTransformationNeeded = false;
+
+    // Apply default block splitting and get data from split block
     let newState = state
       .transform()
       .splitBlock()
       .setBlock('paragraph')
       .apply();
-
-    // Transform last block if needed
     const newBlock = newState.startBlock;
     const prevBlock = newState.document.getPreviousBlock(newBlock);
-    const newPrevState = this.stateAfterAutoTransformation(newState, prevBlock);
+    const isPrevBlockTransformed = this.blockTransformData
+      .some(oneData => oneData.blockType === prevBlock.type);
+
+    // Transform last block if needed
+    const newPrevState = this.stateAfterBlockTransformation(newState, prevBlock);
     if (newPrevState) {
-      needTransformation = true;
+      isTransformationNeeded = true;
       newState = newPrevState;
-    } else {
-      // If prev block is transformed, then we need to make sure the new
-      // block is set to paragraph by default if it is not transformed.
-      const isPrevBlockTransformed = this.startBlockTransformers
-        .some(oneData => oneData.blockType === prevBlock.type);
-      if (isPrevBlockTransformed) needTransformation = true;
     }
 
     // Transform new block if needed
-    const newNextState = this.stateAfterAutoTransformation(newState, newBlock);
+    const newNextState = this.stateAfterBlockTransformation(newState, newBlock);
     if (newNextState) {
-      needTransformation = true;
+      isTransformationNeeded = true;
       newState = newNextState;
     }
 
-    // Return new state if prev or next block should be transformed
-    if (needTransformation) {
+    // Return new state if prev or next block should be transformed.
+    // Also apply our custom splitting with paragraph as the new block type
+    // if the previous block is already transformed.
+    if (isTransformationNeeded || isPrevBlockTransformed) {
       e.preventDefault();
       return newState;
     }
@@ -164,128 +311,230 @@ export default {
 
   /**
    * Check for auto transformations on the passed in block or the `startBlock`
-   * of the currently selection.
+   * of the current selection.
    *
    * If the block should be transformed, we apply the transformation to the
-   * block and return the new tranform.
+   * block and return the new state.
    * If the block should not be transformed but is already transformed, then
-   * we remove the transformation and return the new transform.
+   * we remove the transformation and return the new state.
    */
-  stateAfterAutoTransformation(state, block = null) {
+  stateAfterBlockTransformation(state, block = null) {
     // Determine the block to use
     let blockToUse = block;
     if (blockToUse === null) blockToUse = state.startBlock;
 
     // Find current block transformation and the transformation needed
-    const targetData = this.transformationDataForBlock(blockToUse);
-    const currentData = this.startBlockTransformers
+    const targetData = this.transformDataForBlock(blockToUse);
+    const currentData = this.blockTransformData
       .find(oneData => oneData.blockType === blockToUse.type);
+    let newState;
 
-    // Remove transformation if no target transform data and block
-    // has transform data.
-    if (currentData && targetData === null) {
-      const newTranform = state.transform();
-      this.removeAutoHeadingTransformation(newTranform,
-                                           state,
-                                           blockToUse,
-                                           currentData);
-      return newTranform.apply({ merge: true });
+    // Remove transformation if no target data and block has transform data.
+    if (!targetData && currentData) {
+      newState = this.removeBlockTransformation(state, blockToUse, currentData);
 
-    // Apply transformation if have target transformation and it's not the
+    // Apply transformation if have target data and it's not the
     // same as the current transformation data
-    } else if (targetData !== null) {
-      if (currentData && targetData.blockType === currentData.blockType) return;
-      const newTranform = state.transform();
-      this.applyAutoHeadingTransformation(newTranform,
-                                          state,
-                                          blockToUse,
-                                          targetData);
-      return newTranform.apply({ merge: true });
+    } else if (targetData) {
+      newState = this.applyBlockTransformation(state, blockToUse, targetData);
+    }
 
     // Make sure no text markers exists if no transformation is applied.
     // This could be from a delete command that joins a transformed block with
     // a normal block.
-    } else if (this.blockHasTextMarker(blockToUse, state)) {
-      const newTranform = state.transform();
-      this.removeHeadingMarkerFromBlock(newTranform, state, blockToUse);
-      return newTranform.apply({ merge: true });
+    if (!newState) {
+      return this.removeExtraBlockMarkersFromBlock(state, blockToUse, currentData);
+    }
+
+    return newState;
+  },
+
+  /**
+   * Remove any extra block markers applied from the passed in block.
+   * If the block is transformed, we remove only block markers after the
+   * matched text, else we remove block markers from the whole block.
+   * If no block makers exist, then no transformations are applied.
+   * Note: State changes are merged by default.
+   */
+  removeExtraBlockMarkersFromBlock(state, block, transformData, shouldMerge = true) {
+    const { document, selection } = state;
+    const marks = Object.keys(this.schema.marks);
+
+    // Determine the selection to remove the markers.
+    // If the block is transformed we select everything past the matched text,
+    // else we select the whole block.
+    let markerSelection = selection.moveToRangeOf(block);
+    if (transformData) {
+      const markerLength = block.text.indexOf(' ') + 1;
+      markerSelection = markerSelection
+        .moveToOffsets(markerLength, block.length)
+    }
+
+    // Remove all possible markers from the selection
+    const transform = state.transform().moveTo(markerSelection);
+    let marksRemoved = false;
+    marks.forEach((oneMark) => {
+      const hasMark = document
+        .getMarksAtRange(markerSelection)
+        .some(mark => mark.type === oneMark);
+      if (hasMark) {
+        transform.removeMark(oneMark);
+        marksRemoved = true;
+      }
+    });
+
+    // Apply the transformation
+    if (marksRemoved) {
+      return transform
+        .moveTo(selection)
+        .apply({ merge: shouldMerge });
     }
   },
 
-  blockHasTextMarker(block, state) {
-    const { document, selection } = state;
-    const blockSelection = selection
-      .collapseToStartOf(block)
-      .extendToEndOf(block);
-    return document
-      .getMarksAtRange(blockSelection)
-      .some(mark => mark.type === 'heading-marker');
-  },
-
-  removeHeadingMarkerFromBlock(transform, state, block) {
+  /**
+   * Remove any block transformations made by this plugin.
+   * This will handle heading and list transformations in `blockTransformData`.
+   * Note: State changes are merged by default.
+   */
+  removeBlockTransformation(state, block, transformData, shouldMerge = true) {
     const { selection } = state;
-    const blockSelection = selection
-      .collapseToStartOf(block)
-      .extendToEndOf(block);
-    return transform.removeMarkAtRange(blockSelection, 'heading-marker');
+    const { listBlockType, textMarker, indentationCount } = transformData;
+
+    // Do nothing if target block is not of the transform block type.
+    if (block.type !== transformData.blockType) return;
+
+    // Remove block and block marker
+    const transform = state
+      .transform()
+      .moveToRangeOf(block)
+      .removeMark(textMarker)
+      .setBlock('paragraph');
+
+    // Remove list blocks
+    if (listBlockType) {
+      transform.unwrapBlock(listBlockType);
+
+      // Remove indentations if any
+      if (this.shouldRemoveIndentationsOnListBlockRemoval
+          && indentationCount > 0) {
+        const deleteRange = selection
+          .collapseToStartOf(block)
+          .extendForward(indentationCount);
+        transform
+          .moveTo(deleteRange)
+          .delete();
+      }
+    }
+
+    // Revert selection changes
+    transform.moveTo(selection);
+
+    // Apply changes
+    return transform.apply({ merge: shouldMerge });
   },
 
-  removeAutoHeadingTransformation(transform, state, block, transformData) {
-    return transform
-      .collapseToStartOf(block)
-      .extendToEndOf(block)
-      .removeMark(transformData.textMarker)
-      .setBlock('paragraph')
-      .moveTo(state.selection);
-  },
-
-  applyAutoHeadingTransformation(transform, state, block, transformData) {
+  /**
+   * Apply the block transformation passed in.
+   * This will handle heading and list transformations in `blockTransformData`.
+   * Note: State changes are merged by default.
+   */
+  applyBlockTransformation(state, block, transformData, shouldMerge = true) {
     const { selection } = state;
-    const { matchText, textMarker, blockType } = transformData;
+    const { matchedText, textMarker, blockType, indentationCount, listBlockType } = transformData;
+    const markerMatchLength = indentationCount + matchedText.length;
+
+    // If block already transform to target type, do nothing.
+    if (block.type === blockType) return;
+
+    // Set block type and add in block markers
     const markerSelection = selection
       .collapseToStartOf(block)
-      .extendForward(matchText.length);
+      .extendForward(markerMatchLength);
     const contentSelection = markerSelection
       .collapseToFocus()
       .extendToEndOf(block);
-    transform
+    const transform = state
+      .transform()
       .moveTo(markerSelection)
       .addMark(textMarker)
       .moveTo(contentSelection)
       .removeMark(textMarker)
-      .moveTo(selection)
       .setBlock(blockType);
+
+    // Wrap entire block in `listBlockType` if provided.
+    if (listBlockType) {
+      log.info("wrap block: " + listBlockType)
+      transform
+        .moveToRangeOf(block)
+        .wrapBlock(listBlockType);
+    }
+
+    // Revert selection changes
+    transform.moveTo(selection);
+
+    // Remove marks at selection if its right after the matched marker text.
     if (selection.isCollapsed
-        && selection.startOffset >= matchText.length + 1) {
+        && selection.startOffset === markerMatchLength + 1) {
       transform.removeMark(textMarker);
     }
-    return transform;
+
+    // Apply changes
+    return transform.apply({ merge: shouldMerge });
   },
 
-  transformationDataForBlock(targetBlock) {
-    const blockText = targetBlock.text;
-    let transformationData = null;
-
-    this.startBlockTransformers.forEach((matchData) => {
-      // Skip if transformation data found
-      if (transformationData !== null) return;
+  /**
+   * Returns the transformation data required for the passed in block.
+   * If the block should not be transformed, nothing is returned.
+   */
+  transformDataForBlock(block) {
+    const blockText = block.text;
+    let transformData;
+    this.blockTransformData.forEach((matchData) => {
+      // Skip if we found our transform data
+      if (transformData) return;
 
       // Handle text and texts attributes
-      let matchTexts = matchData.texts;
-      if (matchTexts === undefined) matchTexts = [matchData.text];
+      const matchTexts = matchData.texts ? matchData.texts : [matchData.text];
 
-      // Find matching text in block
+      // If match data is list block, adjust text to match by removing
+      // starting indentations before matching the text.
+      let textToMatch = blockText;
+      const isListBlock = !!matchData.listBlockType;
+      let listBlockIndentation = 0;
+      if (isListBlock) {
+        listBlockIndentation = this.getIndentationCountForText(blockText);
+        textToMatch = blockText.substring(listBlockIndentation);
+      }
+
+      // Try to match the block text with our transform data text
       matchTexts.forEach((matchText) => {
-        // Check if current block text starts with the match text plus a space.
+        if (transformData) return;
+
+        // Handle special case for numbered lists.
+        // We need to figure out if the `textToMatch` is of format `[number]. `.
+        if (matchText === '[numbered-list]') {
+          const dotIndex = textToMatch.indexOf('. ');
+          const listNumberString = textToMatch.substring(0, dotIndex);
+          if (dotIndex > 0 && this.isInt(listNumberString)) {
+            transformData = matchData;
+            transformData.matchedText = textToMatch.substring(0, dotIndex + 1);
+          }
+
+        // Check if `textToMatch` starts with the `matchText` plus a space.
         // If true, then we set target block type to the matched block type.
-        if (blockText.indexOf(`${matchText} `) === 0) {
-          transformationData = matchData;
-          transformationData.matchText = matchText;
+        } else if (textToMatch.indexOf(`${matchText} `) === 0) {
+          transformData = matchData;
+          transformData.matchedText = matchText;
         }
       });
+
+      // Set indentation amount for list types
+      if (transformData) {
+        transformData.indentationCount = listBlockIndentation;
+      }
     });
 
-    return transformationData;
+    return transformData;
   },
 
   createDivider(state) {
@@ -298,5 +547,21 @@ export default {
       .splitBlock()
       .setBlock('paragraph')
       .apply();
+  },
+
+  getIndentationCountForText(matchedText) {
+    let index = 0;
+    let indentationCount = 0;
+    while (matchedText.charAt(index) === '\t') {
+      index += 1;
+      indentationCount += 1;
+    }
+    return indentationCount;
+  },
+
+  isInt(value) {
+    if (Number.isNaN(value)) return false;
+    const floatValue = Number.parseFloat(value);
+    return (floatValue | 0) === floatValue;
   },
 };
