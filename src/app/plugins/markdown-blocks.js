@@ -68,8 +68,9 @@ export default {
             suppressContentEditableWarning
             {...props.attributes}>
               <span
+                className="divider-span"
                 contentEditable={false}
-                suppressContentEditableWarning>&nbsp;</span>
+                suppressContentEditableWarning>{props.children}</span>
           </div>
         );
       },
@@ -100,6 +101,18 @@ export default {
   },
 
   onKeyDownBackspace(e, data, state) {
+    // Handle deleting dividers
+    const { startBlock, startOffset, isCollapsed } = state;
+    const prevBlock = state.document.getPreviousBlock(startBlock);
+    if (isCollapsed && startOffset === 0 && prevBlock.type === 'divider') {
+      return state
+        .transform()
+        .moveToRangeOf(prevBlock, startBlock)
+        .delete()
+        .setBlock('paragraph')
+        .apply();
+    }
+
     // Handle deleting indentations in a number or bullet list.
     // This will override the default backspace implementation so we do this first.
     const newState = this.stateAfterListIndentationDeletion(e, data, state);
@@ -162,7 +175,7 @@ export default {
     const indexAfterSpace = blockText.indexOf(' ') + 1;
     if (selection.startOffset < indexAfterSpace) return;
 
-    // If selection is collpased and at the start of list item,
+    // If selection is collapsed and at the start of list item,
     // then remove block and add new pargraph block
     if (selection.isCollapsed && selection.startOffset === indexAfterSpace) {
       const currentData = this.blockTransformData
@@ -176,26 +189,25 @@ export default {
         .delete()
         .splitBlock()
         .apply();
+    }
 
     // Else split block and create a new list item
-    } else {
-      const indentationCount = this.getIndentationCountForText(blockText);
-      const markerText = blockText.substring(indentationCount, indexAfterSpace - 1);
-      const isNumberList = markerText.slice(-1) === '.';
-      let newText = blockText.substring(0, indexAfterSpace);
-      if (isNumberList) {
-        const numberStr = markerText.slice(0, -1);
-        const nextNumber = Number.parseInt(numberStr, 10) + 1;
-        newText = blockText.substring(0, indentationCount) + nextNumber;
-        newText = `${newText}. `;
-      }
-      e.preventDefault();
-      return state
-        .transform()
-        .splitBlock()
-        .insertText(newText)
-        .apply();
+    const indentationCount = this.getIndentationCountForText(blockText);
+    const markerText = blockText.substring(indentationCount, indexAfterSpace - 1);
+    const isNumberList = markerText.slice(-1) === '.';
+    let newText = blockText.substring(0, indexAfterSpace);
+    if (isNumberList) {
+      const numberStr = markerText.slice(0, -1);
+      const nextNumber = Number.parseInt(numberStr, 10) + 1;
+      newText = blockText.substring(0, indentationCount) + nextNumber;
+      newText = `${newText}. `;
     }
+    e.preventDefault();
+    return state
+      .transform()
+      .splitBlock()
+      .insertText(newText)
+      .apply();
   },
 
   /**
@@ -251,7 +263,7 @@ export default {
 
     // Else if no indentation and no content after selection,
     // then remove the list item transform.
-    } else if (indentation == 0
+    } else if (indentation === 0
                && (startBlock.text.length === selection.startOffset)) {
       const currentData = this.blockTransformData
         .find(oneData => oneData.blockType === startBlock.type);
@@ -367,7 +379,7 @@ export default {
     if (transformData) {
       const markerLength = block.text.indexOf(' ') + 1;
       markerSelection = markerSelection
-        .moveToOffsets(markerLength, block.length)
+        .moveToOffsets(markerLength, block.length);
     }
 
     // Remove all possible markers from the selection
@@ -463,9 +475,15 @@ export default {
 
     // Wrap entire block in `listBlockType` if provided.
     if (listBlockType) {
-      log.info("wrap block: " + listBlockType)
+      // If previous block is also a list, combine this block with the list
+      let prevBlock = block;
+      while (prevBlock === block || prevBlock.type === blockType) {
+        prevBlock = state.document.getPreviousBlock(prevBlock);
+      }
+      const startBlock = prevBlock || block;
       transform
-        .moveToRangeOf(block)
+        .moveToRangeOf(startBlock, block)
+        .unwrapBlock(listBlockType)
         .wrapBlock(listBlockType);
     }
 
@@ -540,9 +558,6 @@ export default {
   createDivider(state) {
     return state
       .transform()
-      .collapseToStart()
-      .extendToStartOf(state.startBlock)
-      .delete()
       .setBlock('divider')
       .splitBlock()
       .setBlock('paragraph')
