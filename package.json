@@ -61,7 +61,6 @@
     "webpack-dev-middleware": "^1.4.0"
   },
   "dependencies": {
-    // Slack dependencies
     "cheerio": "^0.22.0",
     "debug": "^2.3.2",
     "direction": "^0.1.5",
@@ -72,10 +71,9 @@
     "is-empty": "^1.0.0",
     "keycode": "^2.1.2",
     "type-of": "^2.0.1",
-    // My dependencies
     "react": "^15.3.1",
     "react-dom": "^15.3.1",
     "loglevel": "^1.4.1",
-    "lodash": "^4.13.1",
+    "lodash": "^4.13.1"
   }
 }

@@ -4,12 +4,12 @@ import corePlugin from '~/slate/plugins/core';
 
 const slateCore = corePlugin();
 const log = loglevel.getLogger('markdown-blocks');
-log.info('markdown-blocks plugin applied');
+log.info('[Plugin] \'markdown-blocks\' applied');
 
 /**
  * Add support for handling markdown blocks.
  *
- * This includes headings, lists, codeblocks, and dividers.
+ * This includes headings, and lists.
  */
 export default {
 
@@ -60,20 +60,6 @@ export default {
       'numbered-list': props => <ol {...props.attributes}>{props.children}</ol>,
       'list-item-bullet': props => <li {...props.attributes}>{props.children}</li>,
       'list-item-number': props => <li {...props.attributes}>{props.children}</li>,
-      divider: (props) => {
-        return (
-          <div
-            className="document-divider"
-            contentEditable={false}
-            suppressContentEditableWarning
-            {...props.attributes}>
-              <span
-                className="divider-span"
-                contentEditable={false}
-                suppressContentEditableWarning>{props.children}</span>
-          </div>
-        );
-      },
     },
     marks: {
       'heading-marker': 'heading-marker',
@@ -100,19 +86,18 @@ export default {
     }
   },
 
-  onKeyDownBackspace(e, data, state) {
-    // Handle deleting dividers
-    const { startBlock, startOffset, isCollapsed } = state;
-    const prevBlock = state.document.getPreviousBlock(startBlock);
-    if (isCollapsed && startOffset === 0 && prevBlock.type === 'divider') {
-      return state
-        .transform()
-        .moveToRangeOf(prevBlock, startBlock)
-        .delete()
-        .setBlock('paragraph')
-        .apply();
-    }
+  onKeyDownEnter(e, data, state) {
+    const { startBlock, startOffset } = state;
 
+    // Handle continuing list item
+    const newState = this.stateAfterContinueListItem(e, data, state);
+    if (newState) return newState;
+
+    // Handle block spitting logic for everything else
+    return this.handleBlockSplitting(e, state);
+  },
+
+  onKeyDownBackspace(e, data, state) {
     // Handle deleting indentations in a number or bullet list.
     // This will override the default backspace implementation so we do this first.
     const newState = this.stateAfterListIndentationDeletion(e, data, state);
@@ -130,24 +115,6 @@ export default {
 
   onKeyDownTab(e, data, state) {
     return this.stateAfterListItemAddIndentation(e, data, state);
-  },
-
-  onKeyDownEnter(e, data, state) {
-    const { startBlock, startOffset } = state;
-
-    // Handle creating dividers
-    const leftChars = startBlock.text.substring(0, startOffset);
-    if (leftChars === '---') {
-      e.preventDefault();
-      return this.createDivider(state);
-    }
-
-    // Handle continuing list item
-    const newState = this.stateAfterContinueListItem(e, data, state);
-    if (newState) return newState;
-
-    // Handle block spitting logic for everything else
-    return this.handleBlockSplitting(e, state);
   },
 
   onBeforeInput(e, data, state, editor) {
@@ -294,7 +261,7 @@ export default {
       .setBlock('paragraph')
       .apply();
     const newBlock = newState.startBlock;
-    const prevBlock = newState.document.getPreviousBlock(newBlock);
+    const prevBlock = newState.document.getPreviousBlock(newBlock.key);
     const isPrevBlockTransformed = this.blockTransformData
       .some(oneData => oneData.blockType === prevBlock.type);
 
@@ -464,7 +431,7 @@ export default {
       .extendForward(markerMatchLength);
     const contentSelection = markerSelection
       .collapseToFocus()
-      .extendToEndOf(block);
+      .extendToEndOf(block.getTextAtOffset(block.length));
     const transform = state
       .transform()
       .moveTo(markerSelection)
@@ -475,14 +442,8 @@ export default {
 
     // Wrap entire block in `listBlockType` if provided.
     if (listBlockType) {
-      // If previous block is also a list, combine this block with the list
-      let prevBlock = block;
-      while (prevBlock === block || prevBlock.type === blockType) {
-        prevBlock = state.document.getPreviousBlock(prevBlock);
-      }
-      const startBlock = prevBlock || block;
       transform
-        .moveToRangeOf(startBlock, block)
+        .moveToRangeOf(block)
         .unwrapBlock(listBlockType)
         .wrapBlock(listBlockType);
     }
@@ -553,15 +514,6 @@ export default {
     });
 
     return transformData;
-  },
-
-  createDivider(state) {
-    return state
-      .transform()
-      .setBlock('divider')
-      .splitBlock()
-      .setBlock('paragraph')
-      .apply();
   },
 
   getIndentationCountForText(matchedText) {

@@ -1,7 +1,8 @@
 import React from 'react';
 import BaseBehaviour from './plugins/base-behaviour';
-import MarkdownMarks from './plugins/markdown-marks';
-import MarkdownBlocks from './plugins/markdown-blocks';
+import FormattingInline from './plugins/formatting/formatting-inline';
+import MarkdownBlocks from './plugins/markdown/markdown-blocks';
+import MarkdownDivider from './plugins/markdown/markdown-divider';
 import { Editor, Raw } from '../slate/index';
 
 const initialState = Raw.deserialize({
@@ -39,7 +40,10 @@ export default class Document extends React.Component {
     return (
       <Editor
         state={this.state.state}
-        plugins={[MarkdownMarks, MarkdownBlocks, BaseBehaviour]}
+        plugins={[FormattingInline,
+                  MarkdownBlocks,
+                  MarkdownDivider,
+                  BaseBehaviour]}
         onChange={this.onChange}
       />
     );

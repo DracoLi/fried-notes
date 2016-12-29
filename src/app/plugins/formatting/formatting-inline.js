@@ -1,19 +1,18 @@
+import loglevel from 'loglevel';
+
+const log = loglevel.getLogger('formatting-inline');
+log.info('[Plugin] \'formatting-inline\' applied');
+
 /**
- * Add support for basic shortcuts with the modifier key.
+ * Add support for inline formatting shortcuts.
  *
- * Supports bold, italic, strikethrough and underline.
+ * Supports bold, italic, strikethrough, and underline.
  */
 export default {
   schema: {
     marks: {
       bold: {
         fontWeight: 'bold',
-      },
-      code: {
-        fontFamily: 'monospace',
-        backgroundColor: '#eee',
-        padding: '3px',
-        borderRadius: '4px',
       },
       italic: {
         fontStyle: 'italic',
@@ -23,7 +22,7 @@ export default {
       },
       strikethrough: {
         textDecoration: 'line-through',
-      },
+      }
     },
   },
 
