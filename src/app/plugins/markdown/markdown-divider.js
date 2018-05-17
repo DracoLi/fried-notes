@@ -1,7 +1,7 @@
 import React from 'react';
 import loglevel from 'loglevel';
 
-const log = loglevel.getLogger('markdown-blocks');
+const log = loglevel.getLogger('markdown-divider');
 log.info('[Plugin] \'markdown-divider\' applied');
 
 export default {

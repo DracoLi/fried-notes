@@ -4,12 +4,10 @@ import corePlugin from '~/slate/plugins/core';
 
 const slateCore = corePlugin();
 const log = loglevel.getLogger('markdown-blocks');
-log.info('[Plugin] \'markdown-blocks\' applied');
+log.info('[Plugin] \'markdown-headings-and-lists\' applied');
 
 /**
- * Add support for handling markdown blocks.
- *
- * This includes headings, and lists.
+ * Add support for handling markdown headings and lists.
  */
 export default {
 
@@ -67,13 +65,6 @@ export default {
     },
   },
 
-
-  /**
-   * Determines when we remove a list block transformation, whether the
-   * indentations for the list blocks should be removed as well.
-   */
-  shouldRemoveIndentationsOnListBlockRemoval: true,
-
   onKeyDown(e, data, state) {
     if (data.key === 'enter') {
       return this.onKeyDownEnter(e, data, state);
@@ -90,17 +81,17 @@ export default {
     const { startBlock, startOffset } = state;
 
     // Handle continuing list item
-    const newState = this.stateAfterContinueListItem(e, data, state);
+    const newState = this.stateAfterListItemContinue(e, data, state);
     if (newState) return newState;
 
     // Handle block spitting logic for everything else
-    return this.handleBlockSplitting(e, state);
+    return this.handleBlockTransformationSplitting(e, state);
   },
 
   onKeyDownBackspace(e, data, state) {
     // Handle deleting indentations in a number or bullet list.
     // This will override the default backspace implementation so we do this first.
-    const newState = this.stateAfterListIndentationDeletion(e, data, state);
+    const newState = this.stateAfterListItemIndentationDeletion(e, data, state);
     if (newState) return newState;
 
     // Handle block transformation after core's backspace behaviour
@@ -132,22 +123,27 @@ export default {
    * Continue can only work if the current selection is after
    * the space in the bullet marker.
    */
-  stateAfterContinueListItem(e, data, state) {
-    const { startBlock, selection } = state;
+  stateAfterListItemContinue(e, data, state) {
+    const { startBlock, selection, isCollapsed } = state;
     const blockText = startBlock.text;
-    if (startBlock.type.indexOf('list-item-') !== 0) return;
 
-    // If the selection is before the space in the marker then we return nothing
-    // so the default block splitting behaviour will be used.
+    // Make sure we are dealing inside a list item
+    if (!this.isBlockListItemType(startBlock)) return;
+
+    // Any continue with start selection before start does not support continue
     const indexAfterSpace = blockText.indexOf(' ') + 1;
-    if (selection.startOffset < indexAfterSpace) return;
+    const isSelectionBeforeStart = selection.startOffset < indexAfterSpace;
+    if (isSelectionBeforeStart) return;
 
-    // If selection is collapsed and at the start of list item,
-    // then remove block and add new pargraph block
-    if (selection.isCollapsed && selection.startOffset === indexAfterSpace) {
+    // If user continue on the last item list with a collapsed selection
+    // and the list item has no content, then we remove the list item instead.
+    const isSelectionAtStart = selection.startOffset === indexAfterSpace;
+    const isListItemEmpty = blockText.length === indexAfterSpace;
+    const nextBlock = state.document.getNextBlock(startBlock.key);
+    const isLastListItem = !this.isBlockListItemType(nextBlock);
+    if (isSelectionAtStart && isCollapsed && isListItemEmpty && isLastListItem) {
       const currentData = this.blockTransformData
         .find(oneData => oneData.blockType === startBlock.type);
-      e.preventDefault();
       return state
         .transform()
         .moveToOffsets(0, indexAfterSpace)
@@ -158,7 +154,7 @@ export default {
         .apply();
     }
 
-    // Else split block and create a new list item
+    // Split block and create a new list item if continue after list text
     const indentationCount = this.getIndentationCountForText(blockText);
     const markerText = blockText.substring(indentationCount, indexAfterSpace - 1);
     const isNumberList = markerText.slice(-1) === '.';
@@ -166,8 +162,7 @@ export default {
     if (isNumberList) {
       const numberStr = markerText.slice(0, -1);
       const nextNumber = Number.parseInt(numberStr, 10) + 1;
-      newText = blockText.substring(0, indentationCount) + nextNumber;
-      newText = `${newText}. `;
+      newText = blockText.substring(0, indentationCount) + nextNumber + '. ';
     }
     e.preventDefault();
     return state
@@ -182,7 +177,7 @@ export default {
    */
   stateAfterListItemAddIndentation(e, data, state) {
     const { startBlock, selection } = state;
-    if (startBlock.type.indexOf('list-item-') !== 0) return;
+    if (!this.isBlockListItemType(startBlock)) return;
     e.preventDefault();
     const insertRange = selection.collapseToStartOf(startBlock);
     const afterSelection = selection.moveForward();
@@ -198,19 +193,19 @@ export default {
    * Handle removing indentations on backspace in a numbered or bullet list.
    * This only works if the current selection is right after the list markers.
    */
-  stateAfterListIndentationDeletion(e, data, state) {
+  stateAfterListItemIndentationDeletion(e, data, state) {
     const { startBlock, selection } = state;
     const blockText = startBlock.text;
 
     // Block must be of list-item
-    if (startBlock.type.indexOf('list-item-') !== 0) return;
+    if (!this.isBlockListItemType(startBlock)) return;
 
     // Selection must be collapsed
     if (!selection.isCollapsed) return;
 
     // Selection start offset must be right after bullet
-    const firstSpaceIndex = blockText.indexOf(' ');
-    if (selection.startOffset !== (firstSpaceIndex + 1)) return;
+    const indexAfterSpace = blockText.indexOf(' ') + 1;
+    if (selection.startOffset !== indexAfterSpace) return;
 
     // If have indentation remove indentation
     const indentation = this.getIndentationCountForText(blockText);
@@ -251,7 +246,7 @@ export default {
    * block need transformation adjustments. If true for any one of the block,
    * then return a new state with the correct transformation applied.
    */
-  handleBlockSplitting(e, state) {
+  handleBlockTransformationSplitting(e, state) {
     let isTransformationNeeded = false;
 
     // Apply default block splitting and get data from split block
@@ -394,8 +389,7 @@ export default {
       transform.unwrapBlock(listBlockType);
 
       // Remove indentations if any
-      if (this.shouldRemoveIndentationsOnListBlockRemoval
-          && indentationCount > 0) {
+      if (indentationCount > 0) {
         const deleteRange = selection
           .collapseToStartOf(block)
           .extendForward(indentationCount);
@@ -514,6 +508,10 @@ export default {
     });
 
     return transformData;
+  },
+
+  isBlockListItemType(targetBlock) {
+    return targetBlock !== null && targetBlock.type.indexOf('list-item-') === 0;
   },
 
   getIndentationCountForText(matchedText) {

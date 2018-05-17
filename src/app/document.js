@@ -1,7 +1,7 @@
 import React from 'react';
 import BaseBehaviour from './plugins/base-behaviour';
 import FormattingInline from './plugins/formatting/formatting-inline';
-import MarkdownBlocks from './plugins/markdown/markdown-blocks';
+import MarkdownHeadingsAndLists from './plugins/markdown/markdown-headings-and-lists';
 import MarkdownDivider from './plugins/markdown/markdown-divider';
 import { Editor, Raw } from '../slate/index';
 
@@ -41,7 +41,7 @@ export default class Document extends React.Component {
       <Editor
         state={this.state.state}
         plugins={[FormattingInline,
-                  MarkdownBlocks,
+                  MarkdownHeadingsAndLists,
                   MarkdownDivider,
                   BaseBehaviour]}
         onChange={this.onChange}
